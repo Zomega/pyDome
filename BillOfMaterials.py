@@ -16,6 +16,7 @@
 
 
 import numpy as np
+from tabulate import tabulate
 
 def get_bill_of_materials(V, C, rounding_precision):
   bom = {}
@@ -31,17 +32,9 @@ def get_bill_of_materials(V, C, rounding_precision):
   #
   # display
   #
-  keys = [x for x in sorted(bom.keys())]
-  keys.reverse()
-  print
   print 'Bill of Materials'
-  print
-  print '\tlength\tnumber'
-  for k in keys:
-      print '\t' + str(k) + '\t' + str(bom[k])
-  print
-  print 'Small length chords could be artifacts, so check them with a DXF viewer before you build anything!'
-  print
+  print 'NOTE: Small length chords could be artifacts, so check them with a DXF viewer before you build anything!'
+  print tabulate([[k, bom[k]] for k in sorted(bom.keys())], ['length', 'number'], tablefmt="fancy_grid")
 
   #
   # data structure to store hub information
@@ -132,7 +125,6 @@ def get_bill_of_materials(V, C, rounding_precision):
       if direction < 0.:  angle_in_degrees = -1 * angle_in_degrees
 
       print '\t\t' + str(spoke) + '\t' +  str(angle_in_degrees)
-
 
 
   ##

@@ -20,127 +20,75 @@
 # load useful modules
 #
 import numpy as np
-import getopt
-import sys
+import click
 
 #
 # load pyDome modules
 #
-from Polyhedral import *
-from SymmetryTriangle import *
-from GeodesicSphere import *
-from Output import *
-from Truncation import *
-from BillOfMaterials import *
+from Polyhedral import Face, Chord, Vertex, Polyhedron, Octahedron, Icosahedron
+from SymmetryTriangle import SymmetryTriangle, ClassOneMethodOneSymmetryTriangle
+from GeodesicSphere import GeodesicSphere
+from Output import OutputDXF, OutputFaceVRML, OutputWireframeVRML
+from Truncation import truncate
+from BillOfMaterials import get_bill_of_materials
 
+@click.command(
+  help='A geodesic dome calculator. Copyright 2013 by Daniel Williams'
+)
+@click.option(
+  '--output', '-o', type=str, required=True,
+  help='Path to output file(s). Extensions will be added. '
+       + 'Generates DXF and WRL files by default, but only WRL file when '
+       + '"-F" option is active. Example:  "-o output/test" produces files '
+       + 'output/test.wrl and output/test.dxf.'
+)
+@click.option(
+  '--radius', '-r', type=float, default=1.0,
+  help='Radius of generated dome. Default 1.0'
+)
+@click.option(
+  '--polyhedral', '-p',
+  type=click.Choice(['octahedron', 'icosahedron']),
+  default='icosahedron',
+  help='Default icosahedron.'
+)
+@click.option(
+  '--frequency', '-f', type=int, default=4,
+  help='Frequency of generated dome. Default 4.'
+)
+@click.option(
+  '--bom-rounding', '-b', type=int, default=5,
+  help='The number of decimal places to round chord length output in the generated Bill of Materials. Default 5.'
+)
+@click.option(
+  '--face', '-F', is_flag=True, default=False,
+  help='Flag specifying whether to generate face output in WRL file. Cancels DXF file output and cannot be used with truncation.'
+)
+@click.option(
+  '--vthreshold', '-v', type=float, default=0.0000001,
+  help='Distance required to consider two vertices equal. Default 0.0000001.'
+)
+@click.option(
+  '--truncation', '-t', type=float,
+  help='Distance (ratio) from the bottom to truncate. I advise using only 0.499999 or 0.333333.'
+)
+def main(radius, frequency, polyhedral, vthreshold, truncation, bom_rounding, face, output):
 
-def display_help():
-  print
-  print 'pyDome:  A geodesic dome calculator. Copyright 2013 by Daniel Williams'
-  print
-  print 'Required Command-Line Input:'
-  print
-  print '\t-o, --output=\tPath to output file(s). Extensions will be added. Generates DXF and WRL files by default, but only WRL file when "-F" option is active. Example:  \"-o output/test\" produces files output/test.wrl and output/test.dxf.'
-  print
-  print 'Options:'
-  print
-  print '\t-r, --radius\tRadius of generated dome. Must be floating point. Default 1.0.'
-  print
-  print '\t-f, --frequency\tFrequency of generated dome. Must be an integer. Default 4.'
-  print
-  print '\t-v, --vthreshold\tDistance required to consider two vertices equal. Default 0.0000001. Must be floating point.'
-  print
-  print '\t-t, --truncation\tDistance (ratio) from the bottom to truncate. Default 0.499999. I advise using only the default or 0.333333. Must be floating point.'
-  print
-  print '\t-b, --bom-rounding\tThe number of decimal places to round chord length output in the generated Bill of Materials. Default 5. Must be an integer.'
-  print
-  print '\t-p, --polyhedron\tEither \"octahedron\" or \"icosahedron\". Default icosahedron.'
-  print
-  print '\t-F, --face\tFlag specifying whether to generate face output in WRL file. Cancels DXF file output and cannot be used with truncation.'
-  print
+  # This section contains various casts and checks to maintain compatability with
+  # the old getopt version.
+  radius = np.float64(radius)
 
-def main():
+  if polyhedral == 'icosahedron':
+    polyhedral = Icosahedron()
+  else:
+    polyhedral = Octahedron()
 
-  #
-  # default values
-  #
-  radius = np.float64(1.)
-  frequency = 4
-  polyhedral = Icosahedron()
-  vertex_equal_threshold = 0.0000001
-  truncation_amount = 0.499999
-  run_truncate = False
-  bom_rounding_precision = 5
-  face_output = False
-  output_path = None
-
-  #
-  # no input arguments
-  #
-  if len(sys.argv[1:]) == 0:
-    display_help()
-    sys.exit(-1)
-
-  #
-  # parse command line
-  #
-  try:
-    opts, args = getopt.getopt(sys.argv[1:], 'r:f:v:t:b:p:Fo:', ['truncation=', 'vthreshold=', 'radius=', 'frequency=', 'help', 'bom-rounding=', 'polyhedron=', 'face', 'output='])
-  except getopt.error, msg:
-    print "for help use --help"
-    sys.exit(-1)
-  for o, a in opts:
-    if o in ('-o', '--output'):
-      output_path = a
-    if o in ('-p', '--polyhedron'):
-      if a == 'octahedron':
-        polyhedral = Octahedron()
-    if o in ('-b', '--bom-rounding'):
-      try:
-        bom_rounding_precision = int(a)
-      except:
-        print '-b or --bom-rounding argument must be an integer. Exiting.'
-        sys.exit(-1)
-    if o in ('-h', '--help'):
-      display_help()
-      sys.exit(0)
-    if o in ('-F', '--face'):
-      face_output = True
-    if o in ('-r', '--radius'):
-      try:
-        a = float(a)
-        radius = np.float64(a)
-      except:
-        print '-r or --radius argument must be a floating point number. Exiting.'
-        sys.exit(-1)
-    if o in ('-f', '--frequency'):
-      try:
-        frequency = int(a)
-      except:
-        print '-f or --frequency argument must be an integer. Exiting.'
-        sys.exit(-1)
-    if o in ('-v', '--vthreshold'):
-      try:
-        a = float(a)
-        vertex_equal_threshold = np.float64(a)
-      except:
-        print '-v or --vthreshold argument must be a floating point number. Exiting.'
-        sys.exit(-1)
-    if o in ('-t', '--truncation'):
-      try:
-        a = float(a)
-        truncation_amount = np.float64(a)
-        run_truncate = True
-      except:
-        print '-t or --truncation argument must be a floating point number. Exiting.'
-        sys.exit(-1)
-
-  #
-  # check for required options
-  #
-  if output_path == None:
-    print 'An output path and filename is required. Use the -o argument. Exiting.'
-    sys.exit(-1)
+  vertex_equal_threshold = vthreshold
+  bom_rounding_precision = bom_rounding
+  face_output = face
+  truncation_amount = truncation
+  run_truncate=truncation is not None
+  output_path = output
 
   #
   # check for mutually exclusive options
